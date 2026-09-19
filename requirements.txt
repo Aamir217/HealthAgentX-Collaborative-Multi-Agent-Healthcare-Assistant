@@ -14,7 +14,7 @@ ragwire[ollama,huggingface,rerank]==1.6.1
 # outside RAGWire's own ingestion since these are transient/PHI, not part of
 # the shared medical knowledge base): text extraction + OCR fallback for
 # scanned pages/images.
-PyMuPDF==1.24.10
+PyMuPDF
 pdfplumber==0.11.4
 pytesseract==0.3.13
 Pillow
