@@ -195,4 +195,6 @@ models).
 
 HealthAgentX is a clinical decision-support prototype for hackathon/research
 purposes. It never issues definitive diagnoses and is not a substitute for
-professional medical judgment.
+professional medical judgment. It's just for Hackathon.
+
+
