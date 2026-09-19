@@ -6,6 +6,7 @@ multi-agent / Loop Engineering execution trace.
 """
 from __future__ import annotations
 
+import json
 import os
 
 import requests
@@ -93,21 +94,45 @@ if run:
     if not symptoms.strip():
         st.warning("Please enter at least the patient's symptoms.")
     else:
-        with st.spinner("Coordinating agents: analyze -> retrieve -> generate -> critique -> verify..."):
-            files_payload = [
-                ("files", (f.name, f.getvalue(), f.type or "application/octet-stream"))
-                for f in (uploaded_files or [])
-            ]
-            data = {"symptoms": symptoms, "history": history, "medications": medications}
+        files_payload = [
+            ("files", (f.name, f.getvalue(), f.type or "application/octet-stream"))
+            for f in (uploaded_files or [])
+        ]
+        data = {"symptoms": symptoms, "history": history, "medications": medications}
+
+        result = None
+        with st.status("Starting multi-agent analysis...", expanded=True) as status:
             try:
                 resp = requests.post(
-                    f"{BACKEND_URL}/api/cases/analyze", data=data, files=files_payload or None, timeout=300
+                    f"{BACKEND_URL}/api/cases/analyze/stream",
+                    data=data,
+                    files=files_payload or None,
+                    timeout=300,
+                    stream=True,
                 )
                 resp.raise_for_status()
-                result = resp.json()
+                for line in resp.iter_lines(decode_unicode=True):
+                    if not line:
+                        continue
+                    event = json.loads(line)
+                    if event["type"] == "progress":
+                        for entry in event["trace"]:
+                            loop_tag = f" (loop {entry['loop_iteration']})" if entry["loop_iteration"] else ""
+                            status.write(f"**{entry['agent']}**{loop_tag} — {entry['summary']}")
+                            status.update(label=f"Running: {entry['agent']}...")
+                    elif event["type"] == "result":
+                        result = event["data"]
             except requests.RequestException as exc:
+                status.update(label="Analysis failed", state="error")
                 st.error(f"Analysis failed: {exc}")
-                result = None
+
+            if result:
+                passed = result["critique"].get("passed")
+                status.update(
+                    label="Verification passed" if passed else "Finished (best-effort, max loops reached)",
+                    state="complete",
+                    expanded=False,
+                )
 
         if result:
             assessment = result["assessment"]

@@ -10,6 +10,8 @@ Loop Engineering:
 """
 from __future__ import annotations
 
+from typing import Iterator
+
 from langgraph.graph import END, StateGraph
 
 from app.agents.coordinator import coordinator_node
@@ -66,16 +68,15 @@ def get_graph():
     return _compiled_graph
 
 
-def run_case(
+def _build_initial_state(
     *,
     symptoms: str,
-    history: str = "",
-    medications: list[str] | None = None,
-    documents_text: list[str] | None = None,
-    max_loops: int = 3,
+    history: str,
+    medications: list[str] | None,
+    documents_text: list[str] | None,
+    max_loops: int,
 ) -> GraphState:
-    graph = get_graph()
-    initial_state: GraphState = {
+    return {
         "symptoms": symptoms,
         "history": history,
         "medications": medications or [],
@@ -85,5 +86,48 @@ def run_case(
         "trace": [],
         "step_counter": 0,
     }
+
+
+def run_case(
+    *,
+    symptoms: str,
+    history: str = "",
+    medications: list[str] | None = None,
+    documents_text: list[str] | None = None,
+    max_loops: int = 3,
+) -> GraphState:
+    graph = get_graph()
+    initial_state = _build_initial_state(
+        symptoms=symptoms,
+        history=history,
+        medications=medications,
+        documents_text=documents_text,
+        max_loops=max_loops,
+    )
     final_state = graph.invoke(initial_state, config={"recursion_limit": 100})
     return final_state
+
+
+def stream_case(
+    *,
+    symptoms: str,
+    history: str = "",
+    medications: list[str] | None = None,
+    documents_text: list[str] | None = None,
+    max_loops: int = 3,
+) -> Iterator[GraphState]:
+    """Same as run_case(), but yields the accumulated state after every agent
+    step (including each Loop Engineering retry) instead of only the final
+    result - lets a caller (e.g. a streaming API endpoint) show live
+    progress through the workflow as it runs."""
+    graph = get_graph()
+    initial_state = _build_initial_state(
+        symptoms=symptoms,
+        history=history,
+        medications=medications,
+        documents_text=documents_text,
+        max_loops=max_loops,
+    )
+    yield from graph.stream(
+        initial_state, config={"recursion_limit": 100}, stream_mode="values"
+    )

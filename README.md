@@ -158,7 +158,14 @@ execution / Loop Engineering trace for a sample case.
   needed, the vector index is created automatically on first use.
 - `POST /api/cases/analyze` — multipart form: `symptoms`, `history`,
   `medications` (comma-separated), `files` (PDF/image lab reports) →
-  returns the structured assessment, critique, evidence, and trace
+  blocks until the whole workflow finishes, then returns the structured
+  assessment, critique, evidence, and trace
+- `POST /api/cases/analyze/stream` — same inputs, but streams
+  newline-delimited JSON as each agent finishes (`{"type": "progress",
+  "trace": [...]}` per step, then a final `{"type": "result", "data": {...}}`
+  with the same shape as `/api/cases/analyze`) instead of blocking until the
+  entire pipeline - including any Loop Engineering retries - completes. This
+  is what the Streamlit UI uses to show live agent-by-agent progress.
 - `GET /api/cases/{case_id}` — fetch a previously stored case
 
 ## Output format
