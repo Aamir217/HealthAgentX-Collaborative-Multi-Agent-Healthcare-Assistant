@@ -10,6 +10,7 @@ the Medical RAG Agent needs (`retrieve`), translating RAGWire's LangChain
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Optional
 
 from app.config import settings
@@ -17,20 +18,27 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 _pipeline = None
+_pipeline_lock = threading.Lock()
 
 
 def get_pipeline():
     """Builds (once) and returns the shared RAGWire pipeline instance.
 
-    Constructing it loads the embedding model and initializes the local
-    Qdrant store, so it's expensive - hence the module-level singleton.
+    Constructing it loads the embedding model and opens the local Qdrant
+    store - which allows only one open client at a time - so this must be
+    thread-safe: FastAPI's sync route handlers each run in their own thread,
+    and two concurrent first requests racing in unguarded would both try to
+    open the store and the second would fail with "already in use by
+    another process" (misleading - it's the same process, just two threads).
     """
     global _pipeline
     if _pipeline is None:
-        from ragwire import RAGWire
+        with _pipeline_lock:
+            if _pipeline is None:  # re-check: another thread may have built it while we waited
+                from ragwire import RAGWire
 
-        logger.info("Initializing RAGWire pipeline from %s", settings.ragwire_config_path)
-        _pipeline = RAGWire(settings.ragwire_config_path)
+                logger.info("Initializing RAGWire pipeline from %s", settings.ragwire_config_path)
+                _pipeline = RAGWire(settings.ragwire_config_path)
     return _pipeline
 
 
