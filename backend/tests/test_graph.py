@@ -1,7 +1,7 @@
 from app.graph import run_case
 
 
-def test_run_case_end_to_end_terminates_and_produces_assessment():
+def test_run_case_end_to_end_terminates_and_produces_assessment(seeded_knowledge_base):
     final_state = run_case(
         symptoms="Chest pain and shortness of breath for 2 days, worse with exertion.",
         history="Type 2 diabetes, hypertension.",
@@ -45,7 +45,7 @@ def test_run_case_end_to_end_terminates_and_produces_assessment():
     assert any("hyperkalemia" in i["description"].lower() for i in interactions)
 
 
-def test_loop_terminates_without_documents_or_medications():
+def test_loop_terminates_without_documents_or_medications(seeded_knowledge_base):
     final_state = run_case(symptoms="Mild headache for one day.", max_loops=2)
     assert final_state["loop_count"] <= 2
     assert "draft_assessment" in final_state

@@ -1,11 +1,7 @@
-from app.ragwire.ingest import ingest_knowledge_base
 from app.ragwire.retriever import RagWire
 
 
-def test_ingest_and_retrieve():
-    count = ingest_knowledge_base(reset=True)
-    assert count > 0
-
+def test_ingest_and_retrieve(seeded_knowledge_base):
     ragwire = RagWire()
     assert ragwire.is_ready()
 

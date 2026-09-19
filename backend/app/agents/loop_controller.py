@@ -43,9 +43,9 @@ def loop_controller_node(state: GraphState) -> dict:
     update.update(
         append_trace(state, agent="loop_controller", summary=summary, detail={"decision": decision})
     )
-    update["_decision"] = decision
+    update["decision"] = decision
     return update
 
 
 def route_after_loop_controller(state: GraphState) -> str:
-    return state.get("_decision", FINALIZE)
+    return state.get("decision", FINALIZE)

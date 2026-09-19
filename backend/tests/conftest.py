@@ -23,8 +23,12 @@ os.environ.setdefault(
 os.environ.setdefault("OLLAMA_HOST", "http://localhost:1")
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _seed_knowledge_base():
+@pytest.fixture(scope="session")
+def seeded_knowledge_base():
+    """Ingests the knowledge base into RAGWire; only for tests that actually
+    exercise retrieval. Deliberately NOT autouse: tests that don't touch
+    RAGWire (e.g. pure LangGraph routing tests) must keep running even in
+    environments where the embedding/reranker models can't be downloaded."""
     from app.ragwire.ingest import ingest_knowledge_base
 
     try:

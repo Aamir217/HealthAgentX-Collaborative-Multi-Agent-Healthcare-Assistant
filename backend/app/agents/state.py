@@ -26,6 +26,12 @@ class GraphState(TypedDict, total=False):
     loop_count: int
     max_loops: int
     verification_passed: bool
+    # Routing signal read by route_after_loop_controller(). Must be declared
+    # here (not just stashed into the update dict ad hoc): a conditional-edge
+    # function whose parameter is annotated with this same GraphState type
+    # only sees keys declared in the schema - LangGraph filters the state to
+    # match it before calling the router, silently dropping anything else.
+    decision: str
 
     # --- observability ---
     trace: list[dict[str, Any]]
