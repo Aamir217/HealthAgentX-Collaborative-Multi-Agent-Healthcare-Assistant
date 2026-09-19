@@ -1,46 +1,66 @@
-"""RagWire: the retrieve-and-rerank facade used by the Medical RAG Agent.
+"""Thin wrapper around the RAGWire library (https://github.com/laxmimerit/ragwire).
 
-Pipeline: embed query (local) -> ANN search (local Chroma) -> local
-cross-encoder rerank -> top-N evidence chunks with provenance.
+RAGWire owns the entire RAG stack end to end - document loading/chunking,
+local embeddings, the local Qdrant vector store, and local cross-encoder
+reranking - all configured declaratively in ragwire_config.yaml. This module
+just builds one shared pipeline instance and exposes the narrow interface
+the Medical RAG Agent needs (`retrieve`), translating RAGWire's LangChain
+`Document` results into the plain dicts the rest of the app expects.
 """
 from __future__ import annotations
 
+import logging
+from typing import Optional
+
 from app.config import settings
-from app.ragwire.embeddings import get_embedder
-from app.ragwire.reranker import get_reranker
-from app.ragwire.vector_store import get_vector_store
+
+logger = logging.getLogger(__name__)
+
+_pipeline = None
+
+
+def get_pipeline():
+    """Builds (once) and returns the shared RAGWire pipeline instance.
+
+    Constructing it loads the embedding model and initializes the local
+    Qdrant store, so it's expensive - hence the module-level singleton.
+    """
+    global _pipeline
+    if _pipeline is None:
+        from ragwire import RAGWire
+
+        logger.info("Initializing RAGWire pipeline from %s", settings.ragwire_config_path)
+        _pipeline = RAGWire(settings.ragwire_config_path)
+    return _pipeline
 
 
 class RagWire:
+    """Facade used by the Medical RAG Agent: `RagWire().retrieve(query)`."""
+
     def __init__(self):
-        self.embedder = get_embedder()
-        self.reranker = get_reranker()
-        self.store = get_vector_store()
+        self.pipeline = get_pipeline()
 
-    def retrieve(self, query: str, top_k: int | None = None, rerank_top_k: int | None = None) -> list[dict]:
+    def retrieve(self, query: str, top_k: Optional[int] = None) -> list[dict]:
         top_k = top_k or settings.retrieval_top_k
-        rerank_top_k = rerank_top_k or settings.rerank_top_k
-
-        query_embedding = self.embedder.encode_one(query)
-        candidates = self.store.query(query_embedding, top_k=top_k)
-        if not candidates:
-            return []
-
-        passages = [c["content"] for c in candidates]
-        reranked = self.reranker.rerank(query, passages, top_k=rerank_top_k)
+        documents = self.pipeline.retrieve(query, top_k=top_k)
 
         results = []
-        for idx, score in reranked:
-            candidate = candidates[idx]
+        for doc in documents:
+            metadata = doc.metadata or {}
             results.append(
                 {
-                    "content": candidate["content"],
-                    "source": candidate["source"],
-                    "score": round(float(score), 4),
+                    "content": doc.page_content,
+                    "source": metadata.get("file_name") or metadata.get("source", "unknown"),
+                    # Present only when a reranker is configured (it is, by default).
+                    "score": round(float(metadata.get("rerank_score", 0.0)), 4),
                     "query": query,
                 }
             )
         return results
 
     def is_ready(self) -> bool:
-        return self.store.count() > 0
+        try:
+            return self.pipeline.get_stats().get("total_documents", 0) > 0
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not read RAGWire collection stats: %s", exc)
+            return False

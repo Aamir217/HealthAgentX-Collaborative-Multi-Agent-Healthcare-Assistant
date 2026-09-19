@@ -3,9 +3,9 @@
 A privacy-preserving multi-agent AI system that analyzes patient symptoms,
 medical history, lab reports, and medications entirely on local
 infrastructure — no patient data ever leaves the machine. Built with
-**LangGraph** for agent orchestration, **RAGWire** (this project's local
-retrieval-augmented-generation subsystem) for evidence grounding, and a
-**local LLM** (served via [Ollama](https://ollama.com)) for reasoning.
+**LangGraph** for agent orchestration, **[RAGWire](https://github.com/laxmimerit/ragwire)**
+for the full retrieval-augmented-generation stack, and a **local LLM**
+(served via [Ollama](https://ollama.com)) for reasoning.
 
 ## Architecture
 
@@ -50,32 +50,43 @@ best-effort result with outstanding issues recorded transparently.
 | Critic/Verifier | Grounding + contradiction/hallucination checks |
 | Loop Controller | Decides retry vs. finalize (Loop Engineering) |
 
-### RAGWire (`backend/app/ragwire/`)
+### RAGWire (`backend/app/ragwire/`, configured by `ragwire_config.yaml`)
 
-The local RAG subsystem: `document_loader.py` (PyMuPDF + pytesseract OCR +
-pdfplumber fallback) → `embeddings.py` (local sentence-transformers, with an
-offline hashing-vectorizer fallback) → `vector_store.py` (persistent
-ChromaDB) → `reranker.py` (local cross-encoder, with a lexical-overlap
-fallback) → `retriever.py` (the `RagWire` retrieve-and-rerank facade).
+The RAG stack is the [`ragwire`](https://pypi.org/project/ragwire/) library
+itself (`pip install ragwire`), not something hand-rolled here — it already
+provides document loading/chunking, local embeddings, a local Qdrant vector
+store, and local cross-encoder reranking end to end, all driven by
+`ragwire_config.yaml`. `backend/app/ragwire/` is a thin integration layer:
 
-Every "local model unavailable" path (no internet to fetch a
-sentence-transformers/cross-encoder model on first run, or no local Ollama
-server) automatically falls back to a dependency-light heuristic so the full
-pipeline still runs end-to-end offline — this is a resilience feature, not
-a design shortcut: install/cache the real local models for full retrieval
-and generation quality.
+- `retriever.py` builds the shared `ragwire.RAGWire` pipeline (once) from
+  that config and exposes `RagWire().retrieve(query)`, translating RAGWire's
+  LangChain `Document` results into the plain dicts the rest of the app uses.
+- `ingest.py` calls the pipeline's own `ingest_directory()` to (re)build the
+  index from `data/knowledge_base/`.
+
+The vector store runs as **embedded local Qdrant** (`vectorstore.url` is a
+plain disk path, no Docker/server needed) — set it to an `http(s)://` URL in
+`.env` (`QDRANT_URL`) to point at a real Qdrant server instead, which is
+required if the API server and the ingestion CLI need to run at the same
+time (local Qdrant storage allows exactly one reader/writer process).
+
+Uploaded **patient** documents (lab reports) are handled separately, in
+`backend/app/documents/loader.py` (PyMuPDF + pytesseract OCR + pdfplumber
+fallback) — deliberately *not* run through RAGWire's ingestion, since a
+patient's lab report is transient, case-specific PHI, not shared medical
+knowledge that should join the persistent, cross-case knowledge base.
 
 ## Tech Stack
 
 | Component | Choice |
 |---|---|
 | LLM | Local, via Ollama (`OLLAMA_MODEL`, default `llama3.2`) |
-| RAG | RAGWire (this repo's `backend/app/ragwire/`) |
+| RAG | [RAGWire](https://github.com/laxmimerit/ragwire) (`pip install ragwire`) |
 | Agent framework | LangGraph |
-| Embeddings | `sentence-transformers/all-MiniLM-L6-v2` (local) |
-| Vector store | ChromaDB (persistent, local) |
-| Reranking | `cross-encoder/ms-marco-MiniLM-L-6-v2` (local) |
-| Document processing | PyMuPDF + pdfplumber |
+| Embeddings | `sentence-transformers/all-MiniLM-L6-v2` via RAGWire (local) |
+| Vector store | Qdrant, embedded/local by default, via RAGWire |
+| Reranking | `cross-encoder/ms-marco-MiniLM-L-6-v2` via RAGWire (local) |
+| Document processing (patient uploads) | PyMuPDF + pdfplumber |
 | OCR | pytesseract (Tesseract) |
 | Backend | FastAPI |
 | Database | SQLite (via SQLAlchemy) |
@@ -89,14 +100,21 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. (Optional but recommended) Install a local LLM
+### 2. Install a local LLM
 ```bash
 # https://ollama.com
 ollama pull llama3.2
 ollama serve
 ```
-Without a running Ollama server, every agent automatically falls back to
-transparent, deterministic heuristics so the app still works for demos.
+The reasoning agents (Symptom Analysis, Medication, Risk Assessment,
+Generator, Critic) each fall back to transparent, deterministic heuristics
+if Ollama isn't reachable, so the multi-agent pipeline still runs without it
+for demos. RAGWire itself is less forgiving: it needs Ollama for
+per-document metadata extraction at ingest time (a document that fails
+extraction is still ingested and stays searchable, just without metadata
+filters), and its embedding/reranker models are downloaded from HuggingFace
+on first use — first run needs internet access once, then everything is
+fully local and cached.
 
 ### 3. Configure environment
 ```bash
@@ -108,6 +126,8 @@ cp .env.example .env
 ```bash
 python scripts/ingest_knowledge_base.py --reset
 ```
+This downloads the embedding/reranker models on first run (cached after
+that) and builds the local Qdrant index from `data/knowledge_base/`.
 
 ### 5. Run the backend
 ```bash
@@ -155,6 +175,10 @@ output across iterations.
 cd backend
 pytest tests/ -v
 ```
+Tests that exercise retrieval build the real RAGWire pipeline (downloading
+its embedding/reranker models on first run) and skip with a clear reason if
+that's not possible in the current environment (no internet, no cached
+models).
 
 ## Disclaimer
 

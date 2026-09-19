@@ -1,0 +1,47 @@
+# Configuration for the RAGWire library (https://github.com/laxmimerit/ragwire),
+# which provides HealthAgentX's entire RAG stack: document loading/chunking,
+# local embeddings, the Qdrant vector store, and local cross-encoder reranking.
+#
+# Everything here runs locally: embeddings via a local HuggingFace/
+# sentence-transformers model, the vector store as local Qdrant file storage
+# (no Docker/server required), and reranking via a local cross-encoder. LLM
+# calls (used by RAGWire only for per-document metadata extraction at ingest
+# time) go to a local Ollama server.
+
+embeddings:
+  provider: "huggingface"
+  model_name: "${EMBEDDING_MODEL}"
+
+llm:
+  provider: "ollama"
+  model: "${OLLAMA_MODEL}"
+  base_url: "${OLLAMA_HOST}"
+
+vectorstore:
+  # A plain (non-http) path runs Qdrant embedded on local disk - no server or
+  # Docker needed. Point this at an http(s):// URL instead (e.g.
+  # http://localhost:6333) to use a real Qdrant server/Docker container for
+  # multi-process/production use.
+  url: "${QDRANT_URL}"
+  collection_name: "${QDRANT_COLLECTION}"
+  use_sparse: false
+  force_recreate: false
+
+splitter:
+  strategy: "recursive"
+  chunk_size: 800
+  chunk_overlap: 120
+
+retriever:
+  search_type: "similarity"
+  top_k: 8
+  rerank:
+    provider: "cross_encoder"
+    model: "${RERANKER_MODEL}"
+    fetch_k: 25
+
+generation:
+  max_context_chars: 12000
+
+loader:
+  extensions: [".md", ".txt", ".pdf"]

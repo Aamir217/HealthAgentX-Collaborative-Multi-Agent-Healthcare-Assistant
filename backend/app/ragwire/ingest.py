@@ -5,13 +5,9 @@ import logging
 from pathlib import Path
 
 from app.config import settings
-from app.ragwire.document_loader import chunk_text, extract_text
-from app.ragwire.embeddings import get_embedder
-from app.ragwire.vector_store import get_vector_store
+from app.ragwire.retriever import get_pipeline
 
 logger = logging.getLogger(__name__)
-
-SUPPORTED_SUFFIXES = {".md", ".txt", ".pdf"}
 
 
 def ingest_knowledge_base(directory: str | None = None, reset: bool = False) -> int:
@@ -19,29 +15,21 @@ def ingest_knowledge_base(directory: str | None = None, reset: bool = False) -> 
     if not directory_path.exists():
         raise FileNotFoundError(f"Knowledge base directory not found: {directory_path}")
 
-    store = get_vector_store()
+    pipeline = get_pipeline()
+
     if reset:
-        store.reset()
+        # Recreate the collection through the already-open pipeline/client
+        # rather than constructing a second RAGWire instance: local Qdrant
+        # storage allows exactly one reader/writer process, so opening a
+        # second client against the same path would deadlock.
+        store = pipeline.vectorstore_wrapper
+        if store.collection_exists():
+            store.delete_collection()
+            logger.info("Deleted existing collection '%s' for reset", store.collection_name)
+        use_sparse = pipeline.config.get("vectorstore", {}).get("use_sparse", False)
+        store.create_collection(use_sparse=use_sparse)
+        pipeline.vectorstore = store.get_store(use_sparse=use_sparse)
 
-    embedder = get_embedder()
-    total_chunks = 0
-
-    for file_path in sorted(directory_path.rglob("*")):
-        if file_path.suffix.lower() not in SUPPORTED_SUFFIXES or not file_path.is_file():
-            continue
-        content = file_path.read_bytes()
-        text = extract_text(file_path.name, content)
-        chunks = chunk_text(text)
-        if not chunks:
-            continue
-
-        embeddings = embedder.encode(chunks).tolist()
-        chunk_dicts = [
-            {"content": chunk, "source": file_path.name, "chunk_index": i}
-            for i, chunk in enumerate(chunks)
-        ]
-        added = store.add_chunks(chunk_dicts, embeddings)
-        total_chunks += added
-        logger.info("Ingested %s chunks from %s", added, file_path.name)
-
-    return total_chunks
+    stats = pipeline.ingest_directory(str(directory_path), recursive=True)
+    logger.info("Knowledge base ingestion stats: %s", stats)
+    return stats["chunks_created"]

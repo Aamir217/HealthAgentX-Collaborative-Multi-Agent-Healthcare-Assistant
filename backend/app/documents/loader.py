@@ -1,8 +1,11 @@
-"""Document ingestion: extracts text from PDFs and images fully locally.
+"""Extracts text from an uploaded patient document (PDF or image), fully
+locally.
 
-PyMuPDF (fitz) is used for fast native text extraction. Pages with little or
-no extractable text (scanned pages) are rasterized and passed through local
-OCR (pytesseract). Plain images go straight to OCR. pdfplumber is used as a
+RAGWire's own document loader (MarkItDown) doesn't OCR scanned pages/images,
+so this fills that gap for patient uploads specifically: PyMuPDF (fitz) is
+used for fast native text extraction, pages with little or no extractable
+text (scanned pages) are rasterized and passed through local OCR
+(pytesseract), and plain images go straight to OCR. pdfplumber is used as a
 secondary extractor for table-heavy lab reports where PyMuPDF's layout can
 mangle columns.
 """
@@ -79,19 +82,3 @@ def extract_text(filename: str, content: bytes) -> str:
     if lower.endswith((".txt", ".md")):
         return content.decode("utf-8", errors="ignore")
     raise ValueError(f"Unsupported document type: {filename}")
-
-
-def chunk_text(text: str, chunk_size: int = 800, overlap: int = 120) -> list[str]:
-    """Simple sliding-window chunker over whitespace-normalized paragraphs."""
-    normalized = " ".join(text.split())
-    if not normalized:
-        return []
-    chunks = []
-    start = 0
-    while start < len(normalized):
-        end = start + chunk_size
-        chunks.append(normalized[start:end])
-        if end >= len(normalized):
-            break
-        start = end - overlap
-    return chunks

@@ -6,8 +6,8 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from app.config import settings
 from app.db import get_session, record_to_dict, save_case
+from app.documents.loader import extract_text
 from app.graph import run_case
-from app.ragwire.document_loader import extract_text
 from app.ragwire.ingest import ingest_knowledge_base
 from app.ragwire.retriever import RagWire
 
@@ -18,10 +18,11 @@ router = APIRouter(prefix="/api")
 @router.get("/health")
 def health() -> dict:
     ragwire = RagWire()
+    stats = ragwire.pipeline.get_stats()
     return {
         "status": "ok",
         "ragwire_ready": ragwire.is_ready(),
-        "knowledge_chunks": ragwire.store.count(),
+        "knowledge_chunks": stats.get("total_documents", 0),
     }
 
 

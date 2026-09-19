@@ -2,17 +2,24 @@ fastapi==0.115.0
 uvicorn[standard]==0.30.6
 python-multipart==0.0.9
 pydantic==2.9.2
-langgraph==0.2.34
-langchain-core==0.3.6
-chromadb==0.5.5
-sentence-transformers==3.1.1
+langgraph==1.2.11
+
+# RAGWire (https://github.com/laxmimerit/ragwire) provides the RAG stack end
+# to end: document loading/chunking, local embeddings, the Qdrant vector
+# store, and local cross-encoder reranking. We only add the OCR/document
+# handling it doesn't cover (see PyMuPDF/pdfplumber/pytesseract below).
+ragwire[ollama,huggingface,rerank]==1.6.1
+
+# Per-request document processing for uploaded patient lab reports (kept
+# outside RAGWire's own ingestion since these are transient/PHI, not part of
+# the shared medical knowledge base): text extraction + OCR fallback for
+# scanned pages/images.
 PyMuPDF==1.24.10
 pdfplumber==0.11.4
 pytesseract==0.3.13
-Pillow==10.4.0
+Pillow
+
 SQLAlchemy==2.0.35
-requests==2.32.3
-numpy==1.26.4
-scikit-learn==1.5.2
+requests
 python-dotenv==1.0.1
-streamlit==1.38.0
+streamlit
