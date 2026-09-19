@@ -38,6 +38,42 @@ with st.sidebar:
         except requests.RequestException as exc:
             st.error(f"Ingestion failed: {exc}")
 
+    st.divider()
+    st.header("Knowledge Base")
+    st.caption(
+        "Add reference documents (guidelines, papers, protocols) that every "
+        "future case can retrieve evidence from via RAGWire. No prior setup "
+        "needed — the index is created automatically on first upload."
+    )
+    kb_files = st.file_uploader(
+        "Add documents to the knowledge base",
+        type=["pdf", "txt", "md"],
+        accept_multiple_files=True,
+        key="kb_uploader",
+    )
+    if st.button("Upload & Ingest", disabled=not kb_files):
+        files_payload = [
+            ("files", (f.name, f.getvalue(), f.type or "application/octet-stream"))
+            for f in kb_files
+        ]
+        with st.spinner("Ingesting into the knowledge base..."):
+            try:
+                resp = requests.post(
+                    f"{BACKEND_URL}/api/knowledge/upload", files=files_payload, timeout=300
+                )
+                resp.raise_for_status()
+                stats = resp.json()
+                st.success(
+                    f"Processed {stats.get('processed', 0)} file(s), "
+                    f"{stats.get('chunks_created', 0)} chunk(s) added "
+                    f"({stats.get('skipped', 0)} skipped, {stats.get('failed', 0)} failed)."
+                )
+                if stats.get("errors"):
+                    st.error(stats["errors"])
+            except requests.RequestException as exc:
+                detail = exc.response.text if getattr(exc, "response", None) is not None else str(exc)
+                st.error(f"Upload failed: {detail}")
+
 st.subheader("Patient Case")
 col1, col2 = st.columns(2)
 with col1:

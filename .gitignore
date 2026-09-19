@@ -5,6 +5,8 @@ venv/
 *.egg-info/
 .env
 chroma_db/
+qdrant_local/
+data/knowledge_base/uploads/
 *.db
 .DS_Store
 .pytest_cache/

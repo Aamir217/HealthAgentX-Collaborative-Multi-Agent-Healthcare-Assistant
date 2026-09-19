@@ -8,7 +8,7 @@ from app.config import settings
 from app.db import get_session, record_to_dict, save_case
 from app.documents.loader import extract_text
 from app.graph import run_case
-from app.ragwire.ingest import ingest_knowledge_base
+from app.ragwire.ingest import ingest_knowledge_base, ingest_uploaded_files
 from app.ragwire.retriever import RagWire
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,27 @@ def ingest_knowledge(reset: bool = False) -> dict:
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"ingested_chunks": count}
+
+
+@router.post("/knowledge/upload")
+async def upload_knowledge_documents(files: list[UploadFile] = File(...)) -> dict:
+    """Adds documents uploaded from the frontend to the knowledge base.
+
+    Works from a cold start: RAGWire auto-creates its collection on first
+    use, so no prior CLI ingestion step is required before the backend or
+    frontend is started.
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+
+    payload = [(upload.filename or "document", await upload.read()) for upload in files]
+
+    try:
+        stats = ingest_uploaded_files(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return stats
 
 
 @router.post("/cases/analyze")

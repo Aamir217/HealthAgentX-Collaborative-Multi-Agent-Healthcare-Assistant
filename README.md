@@ -151,7 +151,11 @@ execution / Loop Engineering trace for a sample case.
 ## API
 
 - `GET /api/health` — service + RAGWire index status
-- `POST /api/knowledge/ingest?reset=false` — (re)build the RAGWire index
+- `POST /api/knowledge/ingest?reset=false` — (re)build the RAGWire index from `data/knowledge_base/`
+- `POST /api/knowledge/upload` — multipart form: `files` (`.pdf`/`.txt`/`.md`) →
+  adds those documents to the knowledge base via RAGWire (also exposed from
+  the Streamlit sidebar). Works from a cold start — no prior CLI ingestion
+  needed, the vector index is created automatically on first use.
 - `POST /api/cases/analyze` — multipart form: `symptoms`, `history`,
   `medications` (comma-separated), `files` (PDF/image lab reports) →
   returns the structured assessment, critique, evidence, and trace
